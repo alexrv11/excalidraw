@@ -102,7 +102,7 @@ export default $config({
     });
 
     // Share links — read-only shareable scene links
-    api.route("POST /api/v2/post/",
+    api.route("POST /api/v2/post",
       goFn("sharelinks-post", { SHARE_LINKS_TABLE: shareLinksTable.name }));
     api.route("GET /api/v2/{id}",
       goFn("sharelinks-get", { SHARE_LINKS_TABLE: shareLinksTable.name }));
@@ -174,6 +174,7 @@ export default $config({
         VITE_APP_ENABLE_TRACKING:      "false",
         VITE_APP_COLLAPSE_OVERLAY:     "false",
         VITE_APP_ENABLE_ESLINT:        "false",
+        VITE_APP_ENABLE_TS_CHECK:      "false",
 
         // ── Excalidraw Plus export key ─────────────────────────────────────
         VITE_APP_PLUS_EXPORT_PUBLIC_KEY: [

@@ -286,7 +286,7 @@ export default defineConfig(({ mode }) => {
       ),
       react(),
       checker({
-        typescript: true,
+        typescript: envVars.VITE_APP_ENABLE_TS_CHECK === "false" ? false : true,
         eslint:
           envVars.VITE_APP_ENABLE_ESLINT === "false"
             ? undefined

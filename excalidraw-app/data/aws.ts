@@ -122,7 +122,7 @@ export const saveToAWS = async (
     body: JSON.stringify({
       sceneVersion,
       ciphertext: arrayBufferToBase64(ciphertext),
-      iv: arrayBufferToBase64(iv.buffer),
+      iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
     }),
   });
 
@@ -134,7 +134,7 @@ export const saveToAWS = async (
 
   // Return the elements we stored (no server-side reconciliation — key stays client)
   const { toBrandedType } = await import("@excalidraw/common");
-  return toBrandedType<RemoteExcalidrawElement[]>(elements as OrderedExcalidrawElement[]);
+  return toBrandedType<RemoteExcalidrawElement[]>(elements as unknown as OrderedExcalidrawElement[]);
 };
 
 export const loadFromAWS = async (
@@ -196,7 +196,7 @@ export const saveFilesToAWS = async ({
             "Content-Type": "application/octet-stream",
             "Cache-Control": `public, max-age=${FILE_CACHE_MAX_AGE_SEC}`,
           },
-          body: buffer,
+          body: buffer as BodyInit,
         });
         if (response.ok) {
           savedFiles.push(id);
@@ -260,7 +260,7 @@ export const uploadBytesToAWS = async (
   _metadata?: Record<string, unknown>,
 ): Promise<void> => {
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
-  const body = data instanceof Blob ? await data.arrayBuffer() : data;
+  const body = (data instanceof Blob ? await data.arrayBuffer() : data) as BodyInit;
 
   const response = await fetch(`${API_URL}/files/${normalizedPath}`, {
     method: "PUT",

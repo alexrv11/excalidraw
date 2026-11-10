@@ -135,7 +135,7 @@ export class AWSSocket implements ISocket {
           action: event,
           roomId,
           ciphertext: arrayBufferToBase64(encryptedBuffer),
-          iv: arrayBufferToBase64(iv.buffer),
+          iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
         }),
       );
     } else if (event === "join-room") {

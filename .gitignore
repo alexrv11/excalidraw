@@ -27,3 +27,6 @@ dev-dist
 html
 meta*.json
 .claude
+.sst
+sst-env.d.ts
+backend/dist
