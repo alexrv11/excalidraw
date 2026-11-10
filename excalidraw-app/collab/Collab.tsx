@@ -82,7 +82,7 @@ import {
   loadFromFirebase,
   saveFilesToFirebase,
   saveToFirebase,
-} from "../data/firebase";
+} from "../data/aws";
 import {
   importUsernameFromLocalStorage,
   saveUsernameToLocalStorage,
@@ -526,8 +526,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.setIsCollaborating(true);
     LocalData.pauseSave("collaboration");
 
-    const { default: socketIOClient } = await import(
-      /* webpackChunkName: "socketIoClient" */ "socket.io-client"
+    const { AWSSocket } = await import(
+      /* webpackChunkName: "awsSocket" */ "../data/awsSocket"
     );
 
     const fallbackInitializationHandler = () => {
@@ -541,15 +541,14 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.fallbackInitializationHandler = fallbackInitializationHandler;
 
     try {
+      const awsSocket = new AWSSocket(import.meta.env.VITE_APP_WS_SERVER_URL);
       this.portal.socket = this.portal.open(
-        socketIOClient(import.meta.env.VITE_APP_WS_SERVER_URL, {
-          transports: ["websocket", "polling"],
-        }),
+        awsSocket as unknown as import("socket.io-client").Socket,
         roomId,
         roomKey,
       );
 
-      this.portal.socket.once("connect_error", fallbackInitializationHandler);
+      awsSocket.once("connect_error", fallbackInitializationHandler);
     } catch (error: any) {
       console.error(error);
       this.setErrorDialog(error.message);

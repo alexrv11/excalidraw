@@ -1,0 +1,5 @@
+packages:
+  - "excalidraw-app"
+  - "backend"
+  - "packages/*"
+  - "examples/*"

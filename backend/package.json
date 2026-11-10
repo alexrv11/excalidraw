@@ -1,0 +1,9 @@
+{
+  "name": "excalidraw-backend",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build:go": "make build",
+    "clean": "make clean"
+  }
+}

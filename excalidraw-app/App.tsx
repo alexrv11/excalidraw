@@ -122,7 +122,7 @@ import {
   importUsernameFromLocalStorage,
 } from "./data/localStorage";
 
-import { loadFilesFromFirebase } from "./data/firebase";
+import { loadFilesFromFirebase } from "./data/aws";
 import {
   LibraryIndexedDBAdapter,
   LibraryLocalStorageMigrationAdapter,

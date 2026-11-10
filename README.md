@@ -84,15 +84,67 @@ We'll be adding these features as drop-in plugins for the npm package in the fut
 
 **Note:** following instructions are for installing the Excalidraw [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw) when integrating Excalidraw into your own app. To run the repository locally for development, please refer to our [Development Guide](https://docs.excalidraw.com/docs/introduction/development).
 
-Use `npm` or `yarn` to install the package.
-
 ```bash
 npm install react react-dom @excalidraw/excalidraw
 # or
-yarn add react react-dom @excalidraw/excalidraw
+pnpm add react react-dom @excalidraw/excalidraw
 ```
 
 Check out our [documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/installation) for more details!
+
+## Self-hosting on AWS (this fork)
+
+This fork replaces the original Firebase + socket.io backend with a fully serverless AWS stack managed by [SST v3](https://sst.dev).
+
+### Architecture
+
+| Concern | Original | This fork |
+|---|---|---|
+| Collab scene persistence | Firebase Firestore | DynamoDB |
+| Binary file storage | Firebase Storage | S3 |
+| Real-time transport | socket.io (Node server) | API Gateway WebSockets |
+| Share links | Custom Node server | API Gateway + DynamoDB |
+| Lambda runtime | TypeScript (Node) | Go (`provided.al2023`) |
+| Frontend hosting | Vercel / manual | S3 + CloudFront (SST) |
+| Package manager | yarn | pnpm |
+
+### Prerequisites
+
+- [Go 1.21+](https://go.dev/dl/)
+- [Node.js 18+](https://nodejs.org/)
+- [pnpm](https://pnpm.io/installation)
+- [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
+- [SST CLI](https://sst.dev/docs/reference/cli): `npm i -g sst`
+
+### Local development
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start the Excalidraw app (frontend only)
+pnpm start
+```
+
+### Deploy to AWS
+
+```bash
+# Deploy to dev stage
+pnpm sst:deploy
+
+# Deploy to production
+pnpm sst:deploy:prod
+```
+
+Both commands build the Go Lambda binaries first (`make -C backend build`), then deploy all infrastructure and the frontend via SST.
+
+### Infrastructure overview (`sst.config.ts`)
+
+- **DynamoDB** — `Scenes` (collab snapshots), `ShareLinks`, `Connections` (WebSocket room membership)
+- **S3** — binary files (images embedded in drawings)
+- **HTTP API (API Gateway v2)** — share link CRUD, collab scene persistence, file proxy
+- **WebSocket API** — real-time collaboration routes: `join-room`, `server-broadcast`, `server-volatile-broadcast`, `user-follow`
+- **CloudFront + S3** — static site hosting for the Excalidraw frontend; Vite env vars auto-wired from SST outputs at build time
 
 ## Contributing
 

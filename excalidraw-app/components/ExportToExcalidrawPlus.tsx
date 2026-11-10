@@ -26,7 +26,7 @@ import type {
 
 import { FILE_UPLOAD_MAX_BYTES } from "../app_constants";
 import { encodeFilesForUpload } from "../data/FileManager";
-import { saveFilesToFirebase, uploadBytesToFirebase } from "../data/firebase";
+import { saveFilesToFirebase, uploadBytesToFirebase } from "../data/aws";
 
 export const exportToExcalidrawPlus = async (
   elements: readonly NonDeletedExcalidrawElement[],
