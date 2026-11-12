@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-12T02:04:23.547Z",
+  "collections": [
+    {
+      "id": "design-system-architecture",
+      "title": "Design System Architecture",
+      "description": "Icons for documenting design systems — tokens, themes, component hierarchies, states, patterns, and governance concepts.",
+      "author": "Excalidraw",
+      "authorUrl": "https://github.com/excalidraw",
+      "createdAt": "2026-11-12",
+      "updatedAt": "2026-11-12",
+      "downloads": 0,
+      "libraryUrl": "/libraries/design-system-architecture.excalidrawlib",
+      "items": [
+        {
+          "id": "dsa-component",
+          "name": "Component",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-component.svg"
+        },
+        {
+          "id": "dsa-token",
+          "name": "Token",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-token.svg"
+        },
+        {
+          "id": "dsa-theme",
+          "name": "Theme",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-theme.svg"
+        },
+        {
+          "id": "dsa-color-scale",
+          "name": "Color Scale",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-color-scale.svg"
+        },
+        {
+          "id": "dsa-typography",
+          "name": "Typography",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-typography.svg"
+        },
+        {
+          "id": "dsa-spacing",
+          "name": "Spacing",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-spacing.svg"
+        },
+        {
+          "id": "dsa-grid",
+          "name": "Grid",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-grid.svg"
+        },
+        {
+          "id": "dsa-breakpoint",
+          "name": "Breakpoint",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-breakpoint.svg"
+        },
+        {
+          "id": "dsa-state",
+          "name": "State",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-state.svg"
+        },
+        {
+          "id": "dsa-variant",
+          "name": "Variant",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-variant.svg"
+        },
+        {
+          "id": "dsa-pattern",
+          "name": "Pattern",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-pattern.svg"
+        },
+        {
+          "id": "dsa-foundation",
+          "name": "Foundation",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-foundation.svg"
+        },
+        {
+          "id": "dsa-prop",
+          "name": "Prop",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-prop.svg"
+        },
+        {
+          "id": "dsa-slot",
+          "name": "Slot",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-slot.svg"
+        },
+        {
+          "id": "dsa-design-system",
+          "name": "Design System",
+          "previewUrl": "/libraries/previews/design-system-architecture/dsa-design-system.svg"
+        }
+      ]
+    }
+  ]
+}

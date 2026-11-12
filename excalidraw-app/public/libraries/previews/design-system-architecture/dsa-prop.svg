@@ -1,0 +1,10 @@
+<svg viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="25" y="30" width="110" height="90" rx="8" fill="#f8fafc" stroke="#1e293b" stroke-width="2"/>
+        <text x="32" y="52"  font-family="monospace" font-size="12" fill="#0ea5e9">size:</text>
+        <text x="32" y="70"  font-family="monospace" font-size="12" fill="#0ea5e9">variant:</text>
+        <text x="32" y="88"  font-family="monospace" font-size="12" fill="#f59e0b">onClick:</text>
+        <text x="100" y="52"  font-family="monospace" font-size="12" fill="#6965db">sm</text>
+        <text x="95" y="70"  font-family="monospace" font-size="12" fill="#6965db">primary</text>
+        <text x="100" y="88"  font-family="monospace" font-size="12" fill="#22c55e">fn()</text>
+        <line x1="25" y1="98" x2="135" y2="98" stroke="#e2e8f0" stroke-width="1"/>
+      </svg>

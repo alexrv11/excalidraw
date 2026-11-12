@@ -142,11 +142,15 @@ import DebugCanvas, {
 } from "./components/DebugCanvas";
 import { useSimulatedCollaborators } from "./debugCollaborators";
 import { AIComponents } from "./components/AI";
+import { Auth0Provider } from "@auth0/auth0-react";
 import { ExcalidrawPlusIframeExport } from "./ExcalidrawPlusIframeExport";
+import { LibrariesPage } from "./pages/Libraries";
+import { SignInPage } from "./pages/SignIn";
+import { AuthCallback } from "./pages/AuthCallback";
 
 import "./index.scss";
 
-import { ExcalidrawPlusPromoBanner } from "./components/ExcalidrawPlusPromoBanner";
+import { UserWidget } from "./components/UserWidget";
 import { AppSidebar } from "./components/AppSidebar";
 
 import type { CollabAPI } from "./collab/Collab";
@@ -448,6 +452,19 @@ const ExcalidrawWrapper = () => {
     adapter: LibraryIndexedDBAdapter,
     // TODO maybe remove this in several months (shipped: 24-03-11)
     migrationAdapter: LibraryLocalStorageMigrationAdapter,
+    validateLibraryUrl: (url) => {
+      try {
+        const { hostname } = new URL(url);
+        return (
+          hostname === window.location.hostname ||
+          hostname === "excalidraw.com" ||
+          hostname.endsWith(".excalidraw.com") ||
+          hostname === "raw.githubusercontent.com"
+        );
+      } catch {
+        return false;
+      }
+    },
   });
 
   const [, forceRefresh] = useState(false);
@@ -1008,9 +1025,7 @@ const ExcalidrawWrapper = () => {
           return (
             <div className="excalidraw-ui-top-right">
               {excalidrawAPI?.getEditorInterface().formFactor === "desktop" && (
-                <ExcalidrawPlusPromoBanner
-                  isSignedIn={isExcalidrawPlusSignedUser}
-                />
+                <UserWidget />
               )}
 
               {collabError.message && <CollabError collabError={collabError} />}
@@ -1317,15 +1332,49 @@ const ExcalidrawApp = () => {
     return <ExcalidrawPlusIframeExport />;
   }
 
-  return (
-    <TopErrorBoundary>
-      <Provider store={appJotaiStore}>
-        <ExcalidrawAPIProvider>
-          <ExcalidrawWrapper />
-        </ExcalidrawAPIProvider>
-      </Provider>
-    </TopErrorBoundary>
-  );
+  if (window.location.pathname === "/libraries") {
+    return <LibrariesPage />;
+  }
+
+  const auth0Domain = import.meta.env.VITE_APP_AUTH0_DOMAIN;
+  const auth0ClientId = import.meta.env.VITE_APP_AUTH0_CLIENT_ID;
+
+  const inner =
+    window.location.pathname === "/sign-in" ? (
+      <SignInPage />
+    ) : window.location.pathname === "/callback" ? (
+      <AuthCallback />
+    ) : (
+      <TopErrorBoundary>
+        <Provider store={appJotaiStore}>
+          <ExcalidrawAPIProvider>
+            <ExcalidrawWrapper />
+          </ExcalidrawAPIProvider>
+        </Provider>
+      </TopErrorBoundary>
+    );
+
+  if (auth0Domain && auth0ClientId) {
+    return (
+      <Auth0Provider
+        domain={auth0Domain}
+        clientId={auth0ClientId}
+        authorizationParams={{
+          redirect_uri: `${window.location.origin}/callback`,
+          audience: import.meta.env.VITE_APP_AUTH0_AUDIENCE || undefined,
+        }}
+        onRedirectCallback={(appState) => {
+          window.location.replace(
+            (appState as { returnTo?: string } | undefined)?.returnTo ?? "/",
+          );
+        }}
+      >
+        {inner}
+      </Auth0Provider>
+    );
+  }
+
+  return inner;
 };
 
 export default ExcalidrawApp;

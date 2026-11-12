@@ -165,7 +165,7 @@ export default $config({
 
         // ── Static configuration ───────────────────────────────────────────
         VITE_APP_LIBRARY_URL:
-          "https://libraries.excalidraw.com",
+          "https://excalidraw.ventulab.com/libraries",
         VITE_APP_LIBRARY_BACKEND:
           "https://us-central1-excalidraw-room-persistence.cloudfunctions.net/libraries",
         VITE_APP_PLUS_LP:              "https://plus.excalidraw.com",
@@ -175,6 +175,11 @@ export default $config({
         VITE_APP_COLLAPSE_OVERLAY:     "false",
         VITE_APP_ENABLE_ESLINT:        "false",
         VITE_APP_ENABLE_TS_CHECK:      "false",
+
+        // ── Auth0 ──────────────────────────────────────────────────────────
+        VITE_APP_AUTH0_DOMAIN:         process.env.VITE_APP_AUTH0_DOMAIN ?? "",
+        VITE_APP_AUTH0_CLIENT_ID:      process.env.VITE_APP_AUTH0_CLIENT_ID ?? "",
+        VITE_APP_AUTH0_AUDIENCE:       process.env.VITE_APP_AUTH0_AUDIENCE ?? "",
 
         // ── Excalidraw Plus export key ─────────────────────────────────────
         VITE_APP_PLUS_EXPORT_PUBLIC_KEY: [

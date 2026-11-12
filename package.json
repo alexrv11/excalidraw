@@ -88,6 +88,7 @@
     "rm:build": "rimraf --glob excalidraw-app/build excalidraw-app/dist excalidraw-app/dev-dist packages/*/dist packages/*/build examples/*/build examples/*/dist",
     "rm:node_modules": "rimraf --glob node_modules excalidraw-app/node_modules packages/*/node_modules",
     "clean-install": "pnpm run rm:node_modules && pnpm install",
+    "seed:libraries": "pnpm dlx tsx scripts/seed-libraries/index.ts",
     "sst:dev": "AWS_PROFILE=alex make -C backend build && AWS_PROFILE=alex sst dev",
     "sst:deploy": "AWS_PROFILE=alex make -C backend build && AWS_PROFILE=alex sst deploy",
     "sst:deploy:prod": "AWS_PROFILE=alex make -C backend build && AWS_PROFILE=alex sst deploy --stage production"

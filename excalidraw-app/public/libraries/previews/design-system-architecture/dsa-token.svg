@@ -1,0 +1,5 @@
+<svg viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="80,8 155,65 80,122 5,65" fill="#fef3c7" stroke="#b45309" stroke-width="2.5"/>
+        <circle cx="80" cy="65" r="16" fill="#f59e0b" stroke="#b45309" stroke-width="2"/>
+        <text x="80" y="108" text-anchor="middle" fill="#92400e" font-family="monospace" font-size="12">= value</text>
+      </svg>

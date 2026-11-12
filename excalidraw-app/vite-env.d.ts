@@ -39,6 +39,11 @@ interface ImportMetaEnv {
 
   VITE_APP_GIT_SHA: string;
 
+  // Auth0
+  VITE_APP_AUTH0_DOMAIN: string;
+  VITE_APP_AUTH0_CLIENT_ID: string;
+  VITE_APP_AUTH0_AUDIENCE: string;
+
   MODE: string;
 
   DEV: string;

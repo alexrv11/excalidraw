@@ -1,0 +1,8 @@
+<svg viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5"  y="110" width="150" height="30" rx="3" fill="#1e293b"/>
+        <rect x="20" y="72"  width="120" height="36" rx="3" fill="#334155"/>
+        <rect x="40" y="35"  width="80"  height="35" rx="3" fill="#64748b"/>
+        <text x="80" y="130" text-anchor="middle" font-family="sans-serif" font-size="10" fill="white">Primitives</text>
+        <text x="80" y="94"  text-anchor="middle" font-family="sans-serif" font-size="10" fill="white">Tokens</text>
+        <text x="80" y="57"  text-anchor="middle" font-family="sans-serif" font-size="10" fill="white">Components</text>
+      </svg>
