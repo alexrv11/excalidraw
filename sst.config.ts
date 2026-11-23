@@ -4,7 +4,7 @@
  * SST v3 (Ion) — unified infrastructure for the entire Excalidraw monorepo.
  *
  * Resources managed here:
- *   - DynamoDB tables  (Scenes, ShareLinks, Connections)
+ *   - DynamoDB tables  (Scenes, ShareLinks, Connections, Libraries, UserLibraries)
  *   - S3 bucket        (binary files / images)
  *   - HTTP API         (Go Lambdas — share links, collab scenes, file proxy)
  *   - WebSocket API    (Go Lambdas — real-time collaboration)
@@ -56,6 +56,17 @@ export default $config({
       ttl: "ttl",
     });
 
+    const librariesTable = new sst.aws.Dynamo("Libraries", {
+      fields: { id: "string" },
+      primaryIndex: { hashKey: "id" },
+    });
+
+    // PK: userSub | SK: collectionId
+    const userLibrariesTable = new sst.aws.Dynamo("UserLibraries", {
+      fields: { userSub: "string", collectionId: "string" },
+      primaryIndex: { hashKey: "userSub", rangeKey: "collectionId" },
+    });
+
     // ─── S3 Bucket ───────────────────────────────────────────────────────────
 
     const filesBucket = new sst.aws.Bucket("Files", {
@@ -76,12 +87,14 @@ export default $config({
     const goFn = (
       cmd: string,
       env: Record<string, $util.Input<string>>,
+      link?: $util.Input<any>[],
     ) => ({
       handler:      "bootstrap",
       runtime:      "provided.al2023" as const,
       architecture: "x86_64" as const,
       bundle:       `backend/dist/${cmd}`,
       environment:  env,
+      link:         link ?? [],
     });
 
     // Shared env used by WebSocket handlers that touch multiple tables.
@@ -94,8 +107,8 @@ export default $config({
 
     const api = new sst.aws.ApiGatewayV2("Api", {
       cors: {
-        allowHeaders: ["content-type", "content-length"],
-        allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
+        allowHeaders: ["content-type", "content-length", "authorization"],
+        allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allowOrigins: ["*"],
         maxAge: "1 day",
       },
@@ -118,6 +131,15 @@ export default $config({
       goFn("files-put", { FILES_BUCKET: filesBucket.name }));
     api.route("GET /files/{key+}",
       goFn("files-get", { FILES_BUCKET: filesBucket.name }));
+
+    // Libraries — icon collection catalogue with install tracking
+    const libEnv = {
+      LIBRARIES_TABLE:      librariesTable.name,
+      USER_LIBRARIES_TABLE: userLibrariesTable.name,
+      AUTH0_DOMAIN:         process.env.VITE_APP_AUTH0_DOMAIN ?? "",
+    };
+    api.route("GET /libraries",            goFn("libraries", libEnv, [librariesTable, userLibrariesTable]));
+    api.route("ANY /libraries/{proxy+}",   goFn("libraries", libEnv, [librariesTable, userLibrariesTable]));
 
     // ─── WebSocket API ───────────────────────────────────────────────────────
 

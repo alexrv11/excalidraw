@@ -142,7 +142,7 @@ import DebugCanvas, {
 } from "./components/DebugCanvas";
 import { useSimulatedCollaborators } from "./debugCollaborators";
 import { AIComponents } from "./components/AI";
-import { Auth0Provider } from "@auth0/auth0-react";
+import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import { ExcalidrawPlusIframeExport } from "./ExcalidrawPlusIframeExport";
 import { LibrariesPage } from "./pages/Libraries";
 import { SignInPage } from "./pages/SignIn";
@@ -466,6 +466,100 @@ const ExcalidrawWrapper = () => {
       }
     },
   });
+
+  // Auto-load libraries the user has installed via the Libraries page.
+  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  useEffect(() => {
+    if (!excalidrawAPI) {
+      return;
+    }
+
+    const LOADED_KEY = "excalidraw-autoloaded-libs";
+    const INSTALLED_KEY = "excalidraw-installed-libs";
+    const PENDING_LOADS_KEY = "excalidraw-pending-lib-loads";
+
+    const alreadyLoaded: string[] = JSON.parse(
+      localStorage.getItem(LOADED_KEY) ?? "[]",
+    );
+
+    // ── Pending loads ──────────────────────────────────────────────────────
+    // The Libraries page writes here on every add (regardless of auth).
+    // Consume and clear so they load exactly once.
+    const pending: Array<{ id: string; libraryUrl: string }> = JSON.parse(
+      localStorage.getItem(PENDING_LOADS_KEY) ?? "[]",
+    );
+    if (pending.length > 0) {
+      localStorage.removeItem(PENDING_LOADS_KEY);
+      for (const col of pending) {
+        excalidrawAPI.updateLibrary({
+          libraryItems: fetch(col.libraryUrl).then((r) => r.blob()),
+          merge: true,
+          defaultStatus: "published",
+        });
+      }
+      const updated = [
+        ...new Set([...alreadyLoaded, ...pending.map((c) => c.id)]),
+      ];
+      localStorage.setItem(LOADED_KEY, JSON.stringify(updated));
+    }
+
+    // ── Anonymous: localStorage INSTALLED_KEY ──────────────────────────────
+    // Load libraries saved locally (works even when unauthenticated or API is down).
+    const localInstalled: Array<{ id: string; libraryUrl: string }> = JSON.parse(
+      localStorage.getItem(INSTALLED_KEY) ?? "[]",
+    );
+    const localToLoad = localInstalled.filter((c) => !alreadyLoaded.includes(c.id));
+    for (const col of localToLoad) {
+      excalidrawAPI.updateLibrary({
+        libraryItems: fetch(col.libraryUrl).then((r) => r.blob()),
+        merge: true,
+        defaultStatus: "published",
+      });
+    }
+    if (localToLoad.length > 0) {
+      const updated = [...new Set([...alreadyLoaded, ...localToLoad.map((c) => c.id)])];
+      localStorage.setItem(LOADED_KEY, JSON.stringify(updated));
+    }
+
+    // ── Authenticated: sync from server preferences ────────────────────────
+    // Picks up installs made on other devices that weren't caught by PENDING_LOADS_KEY.
+    if (!isAuthenticated) {
+      return;
+    }
+    const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
+    if (!apiBase) {
+      return;
+    }
+
+    const freshLoaded: string[] = JSON.parse(
+      localStorage.getItem(LOADED_KEY) ?? "[]",
+    );
+
+    getAccessTokenSilently()
+      .then((token) =>
+        fetch(`${apiBase}/libraries/me`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      )
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(({ collections }: { collections: Array<{ id: string; libraryUrl: string }> }) => {
+        const toLoad = collections.filter((c) => !freshLoaded.includes(c.id));
+        for (const col of toLoad) {
+          excalidrawAPI.updateLibrary({
+            libraryItems: fetch(col.libraryUrl).then((r) => r.blob()),
+            merge: true,
+            defaultStatus: "published",
+          });
+        }
+        if (toLoad.length > 0) {
+          const updated = [...new Set([...freshLoaded, ...toLoad.map((c) => c.id)])];
+          localStorage.setItem(LOADED_KEY, JSON.stringify(updated));
+        }
+      })
+      .catch(() => {
+        // Non-fatal — library panel still shows items from IndexedDB.
+      });
+  }, [excalidrawAPI, isAuthenticated, getAccessTokenSilently]);
 
   const [, forceRefresh] = useState(false);
 

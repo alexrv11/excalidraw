@@ -25,6 +25,7 @@ export const designSystemArchitecture: CollectionDef = {
     "Icons for documenting design systems — tokens, themes, component hierarchies, states, patterns, and governance concepts.",
   author: "Excalidraw",
   authorUrl: "https://github.com/excalidraw",
+  tags: ["design-system", "ui", "components", "architecture"],
   icons: [
     // ── 1. Component ───────────────────────────────────────────────────────────
     {

@@ -535,11 +535,7 @@ export const parseLibraryTokensFromUrl = () => {
     ) ||
     // legacy, kept for compat reasons
     new URLSearchParams(window.location.search).get(URL_QUERY_KEYS.addLibrary);
-  const idToken = libraryUrl
-    ? new URLSearchParams(window.location.hash.slice(1)).get("token")
-    : null;
-
-  return libraryUrl ? { libraryUrl, idToken } : null;
+  return libraryUrl ? { libraryUrl } : null;
 };
 
 class AdapterTransaction {
@@ -717,10 +713,8 @@ export const useHandleLibrary = (
 
     const importLibraryFromURL = async ({
       libraryUrl,
-      idToken,
     }: {
       libraryUrl: string;
-      idToken: string | null;
     }) => {
       const libraryPromise = new Promise<Blob>(async (resolve, reject) => {
         try {
@@ -738,22 +732,10 @@ export const useHandleLibrary = (
         }
       });
 
-      const shouldPrompt = idToken !== excalidrawAPI.id;
-
-      // wait for the tab to be focused before continuing in case we'll prompt
-      // for confirmation
-      await (shouldPrompt && document.hidden
-        ? new Promise<void>((resolve) => {
-            window.addEventListener("focus", () => resolve(), {
-              once: true,
-            });
-          })
-        : null);
-
       try {
         await excalidrawAPI.updateLibrary({
           libraryItems: libraryPromise,
-          prompt: shouldPrompt,
+          prompt: false,
           merge: true,
           defaultStatus: "published",
           openLibraryMenu: true,

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-12T02:04:23.547Z",
+  "updatedAt": "2026-11-13T10:55:54.172Z",
   "collections": [
     {
       "id": "design-system-architecture",
@@ -8,10 +8,17 @@
       "description": "Icons for documenting design systems — tokens, themes, component hierarchies, states, patterns, and governance concepts.",
       "author": "Excalidraw",
       "authorUrl": "https://github.com/excalidraw",
-      "createdAt": "2026-11-12",
-      "updatedAt": "2026-11-12",
+      "tags": [
+        "design-system",
+        "ui",
+        "components",
+        "architecture"
+      ],
+      "createdAt": "2026-11-13",
+      "updatedAt": "2026-11-13",
       "downloads": 0,
       "libraryUrl": "/libraries/design-system-architecture.excalidrawlib",
+      "itemCount": 15,
       "items": [
         {
           "id": "dsa-component",

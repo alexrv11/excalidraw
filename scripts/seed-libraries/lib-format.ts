@@ -146,6 +146,7 @@ export interface CollectionDef {
   description: string;
   author: string;
   authorUrl: string;
+  tags?: string[];
   icons: IconDef[];
 }
 

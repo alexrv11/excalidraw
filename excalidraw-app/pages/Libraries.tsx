@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+
+import { useAuth0 } from "@auth0/auth0-react";
 
 // ─── Adjustable settings ──────────────────────────────────────────────────────
 const DEFAULT_ICON_SIZE = 72; // px — height/width of each preview icon
@@ -885,12 +887,17 @@ interface ManifestCollection {
   updatedAt: string;
   downloads: number;
   libraryUrl: string;
-  items: ManifestItem[];
+  itemCount?: number;
+  items?: ManifestItem[];
 }
 
 interface Manifest {
   version: 1;
   updatedAt: string;
+  collections: ManifestCollection[];
+}
+
+interface ApiListResponse {
   collections: ManifestCollection[];
 }
 
@@ -1035,9 +1042,11 @@ const LibraryCard: React.FC<{
   iconSize: number;
   minTileWidth: number;
   accent: string;
-  onAdd: (url: string) => void;
+  isInstalled: boolean;
+  onAdd: (id: string, url: string) => void;
+  onRemove: (id: string) => void;
   onDownload: (url: string, title: string) => void;
-}> = ({ lib, iconSize, minTileWidth, accent, onAdd, onDownload }) => {
+}> = ({ lib, iconSize, minTileWidth, accent, isInstalled, onAdd, onRemove, onDownload }) => {
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
 
   const tileStyle = (idx: number): React.CSSProperties => ({
@@ -1244,11 +1253,20 @@ const LibraryCard: React.FC<{
             onClick={() => onDownload(lib.libraryUrl, lib.title)}
             outlined
           />
-          <DownloadButton
-            label="+ Add to Excalidraw"
-            accent={accent}
-            onClick={() => onAdd(lib.libraryUrl)}
-          />
+          {isInstalled ? (
+            <DownloadButton
+              label="Remove"
+              accent="#dc2626"
+              onClick={() => onRemove(lib.id)}
+              outlined
+            />
+          ) : (
+            <DownloadButton
+              label="+ Add to Excalidraw"
+              accent={accent}
+              onClick={() => onAdd(lib.id, lib.libraryUrl)}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -1316,6 +1334,13 @@ function darkenHex(hex: string): string {
 // ─── Main page component ──────────────────────────────────────────────────────
 
 function manifestCollectionToLibrary(col: ManifestCollection): Library {
+  // Resolve relative libraryUrl (e.g. "/libraries/foo.excalidrawlib") to an
+  // absolute URL so that useHandleLibrary's validateLibraryUrl (which uses
+  // `new URL()`) can parse it without throwing.
+  const libraryUrl = col.libraryUrl.startsWith("/")
+    ? `${window.location.origin}${col.libraryUrl}`
+    : col.libraryUrl;
+
   return {
     id: col.id,
     title: col.title,
@@ -1324,34 +1349,132 @@ function manifestCollectionToLibrary(col: ManifestCollection): Library {
     downloads: col.downloads,
     date: col.createdAt,
     description: col.description,
-    libraryUrl: col.libraryUrl,
-    itemCount: col.items.length,
-    items: col.items.map((item) => ({
+    libraryUrl,
+    itemCount: col.itemCount ?? col.items?.length ?? 0,
+    items: (col.items ?? []).map((item) => ({
       name: item.name,
       icon: item.previewUrl,
     })),
   };
 }
 
+const INSTALLED_KEY = "excalidraw-installed-libs";
+// Written on every add (regardless of auth) so the canvas effect can load the
+// library items into the panel on the next mount.  Entries are consumed + cleared
+// by App.tsx once loaded.
+const PENDING_LOADS_KEY = "excalidraw-pending-lib-loads";
+
+type InstalledEntry = { id: string; libraryUrl: string };
+
+function readInstalled(): InstalledEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(INSTALLED_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+// ─── Canvas-mode helpers ──────────────────────────────────────────────────────
+
+/**
+ * Returns the referrer URL only when it is on the same origin as the current
+ * page. External or malformed URLs are silently rejected and fall back to "/".
+ */
+function safeReturnUrl(referrer: string): string {
+  if (!referrer) {
+    return "/";
+  }
+  try {
+    const url = new URL(referrer);
+    if (url.origin === window.location.origin) {
+      return referrer;
+    }
+  } catch {
+    // malformed URL — fall through
+  }
+  return "/";
+}
+
 export const LibrariesPage: React.FC = () => {
+  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
   const [iconSize] = useState(DEFAULT_ICON_SIZE);
   const [minTileWidth] = useState(DEFAULT_TILE_MIN_WIDTH);
   const [accent] = useState(DEFAULT_ACCENT);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("downloads");
-  const [allLibraries, setAllLibraries] = useState<Library[]>(LIBRARIES);
+  const [allLibraries, setAllLibraries] = useState<Library[]>([]);
+  // Anonymous users: seed from localStorage. Authenticated users: start empty,
+  // then overwrite with the server response in the effect below.
+  const [installedIds, setInstalledIds] = useState<Set<string>>(
+    () => new Set(readInstalled().map((e) => e.id)),
+  );
+
+  // Snackbar state
+  const SNACK_DURATION = 4000; // ms
+  const [snack, setSnack] = useState<{ title: string; visible: boolean } | null>(null);
+  const snackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // "Canvas mode" — the user arrived from the canvas's Browse Libraries button.
+  const urlParams = new URLSearchParams(window.location.search);
+  const referrerParam = urlParams.get("referrer") ?? "";
+  const targetParam = urlParams.get("target") ?? "";
+  const canvasMode = targetParam === "_excalidraw" && referrerParam !== "";
+  const returnUrl = safeReturnUrl(referrerParam);
+
+  // Track the last-added library URL so "Back to canvas" can carry
+  // #addLibrary=<url>, letting useHandleLibrary in the canvas do the
+  // actual installation (proven path, handles IndexedDB + error UI).
+  const [lastAddedLibraryUrl, setLastAddedLibraryUrl] = useState<string | null>(null);
+
+  const backToCanvasUrl = lastAddedLibraryUrl && canvasMode
+    ? `${returnUrl}#addLibrary=${encodeURIComponent(lastAddedLibraryUrl)}`
+    : returnUrl;
 
   useEffect(() => {
-    fetch("/libraries/manifest.json")
-      .then((r) => r.json())
-      .then((manifest: Manifest) => {
-        const local = manifest.collections.map(manifestCollectionToLibrary);
-        setAllLibraries([...LIBRARIES, ...local]);
+    const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
+    const tryApi = apiBase
+      ? fetch(`${apiBase}/libraries`)
+          .then((r) => (r.ok ? r.json() : Promise.reject()))
+          .then((data: ApiListResponse) => data.collections)
+      : Promise.reject();
+
+    tryApi
+      .catch(() =>
+        fetch("/libraries/manifest.json")
+          .then((r) => r.json())
+          .then((manifest: Manifest) => manifest.collections),
+      )
+      .then((cols: ManifestCollection[]) => {
+        setAllLibraries(cols.map(manifestCollectionToLibrary));
       })
       .catch(() => {
-        // manifest not available — keep hardcoded libraries only
+        // no API and no manifest
       });
   }, []);
+
+  // Authenticated users: load installed libraries from server preferences.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
+    if (!apiBase) {
+      return;
+    }
+    getAccessTokenSilently()
+      .then((token) =>
+        fetch(`${apiBase}/libraries/me`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      )
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: { collections: ManifestCollection[] }) => {
+        setInstalledIds(new Set(data.collections.map((c) => c.id)));
+      })
+      .catch(() => {
+        // Fall back to whatever localStorage had.
+      });
+  }, [isAuthenticated]);
 
   const filtered = allLibraries.filter((lib) => {
     if (!search) {
@@ -1378,17 +1501,99 @@ export const LibrariesPage: React.FC = () => {
     return 0;
   });
 
-  // The token and referrer were passed by LibraryMenuBrowseButton in the query string.
-  // We must echo them back in the hash so App.tsx can open the library panel.
-  const urlParams = new URLSearchParams(window.location.search);
-  const token = urlParams.get("token") ?? "";
-  const referrer = urlParams.get("referrer") ?? "/";
+  const showSnack = (title: string) => {
+    if (snackTimerRef.current) {
+      clearTimeout(snackTimerRef.current);
+    }
+    setSnack({ title, visible: true });
+    snackTimerRef.current = setTimeout(() => {
+      setSnack((s) => (s ? { ...s, visible: false } : null));
+    }, SNACK_DURATION);
+  };
 
-  const handleAdd = (libraryUrl: string) => {
-    const hash = `#addLibrary=${encodeURIComponent(libraryUrl)}${
-      token ? `&token=${encodeURIComponent(token)}` : ""
-    }`;
-    window.location.href = `${referrer}${hash}`;
+  const handleAdd = (id: string, libraryUrl: string) => {
+    setInstalledIds((prev) => new Set([...prev, id]));
+
+    const lib = allLibraries.find((l) => l.id === id);
+    if (lib) {
+      showSnack(lib.title);
+    }
+
+    // Track for the "Back to canvas" link so we can pass #addLibrary=<url>
+    // and let useHandleLibrary (the proven Excalidraw install path) handle it.
+    setLastAddedLibraryUrl(libraryUrl);
+
+    if (canvasMode) {
+      // Canvas mode: the #addLibrary hash on the return navigation handles
+      // loading.  No need for PENDING_LOADS_KEY.
+    } else {
+      // Non-canvas mode: write to PENDING_LOADS_KEY so the canvas effect can
+      // load the library the next time the canvas mounts.
+      const pending: Array<{ id: string; libraryUrl: string }> = JSON.parse(
+        localStorage.getItem(PENDING_LOADS_KEY) ?? "[]",
+      );
+      if (!pending.some((e) => e.id === id)) {
+        localStorage.setItem(
+          PENDING_LOADS_KEY,
+          JSON.stringify([...pending, { id, libraryUrl }]),
+        );
+      }
+    }
+
+    if (isAuthenticated) {
+      // Signed-in: persist to server preferences.
+      const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
+      if (apiBase) {
+        getAccessTokenSilently()
+          .then((token) =>
+            fetch(`${apiBase}/libraries/${id}/install`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${token}` },
+            }),
+          )
+          .catch(() => {
+            // Non-fatal.
+          });
+      }
+    } else {
+      // Anonymous: persist to localStorage only.
+      const existing = readInstalled();
+      if (!existing.some((e) => e.id === id)) {
+        localStorage.setItem(
+          INSTALLED_KEY,
+          JSON.stringify([...existing, { id, libraryUrl }]),
+        );
+      }
+    }
+  };
+
+  const handleRemove = (id: string) => {
+    setInstalledIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+
+    if (isAuthenticated) {
+      // Signed-in: remove from server preferences.
+      const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
+      if (apiBase) {
+        getAccessTokenSilently()
+          .then((token) =>
+            fetch(`${apiBase}/libraries/${id}/install`, {
+              method: "DELETE",
+              headers: { authorization: `Bearer ${token}` },
+            }),
+          )
+          .catch(() => {
+            // Non-fatal.
+          });
+      }
+    } else {
+      // Anonymous: remove from localStorage only.
+      const updated = readInstalled().filter((e) => e.id !== id);
+      localStorage.setItem(INSTALLED_KEY, JSON.stringify(updated));
+    }
   };
 
   const handleDownload = (libraryUrl: string, title: string) => {
@@ -1408,6 +1613,10 @@ export const LibrariesPage: React.FC = () => {
         minHeight: "100vh",
         fontFamily: "'Inter', system-ui, sans-serif",
         paddingBottom: 80,
+        // The global index.html sets overflow:hidden on html+body for the
+        // canvas.  Override it here so the Libraries page can scroll normally.
+        overflowY: "auto",
+        height: "100%",
       }}
     >
       {/* Load fonts */}
@@ -1415,6 +1624,202 @@ export const LibrariesPage: React.FC = () => {
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Kalam:wght@700&family=Inter:wght@400;500;600;700&display=swap"
       />
+
+      {/* Back-to-canvas bar — only shown when opened from the canvas */}
+      {canvasMode && (
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 100,
+            background: "white",
+            borderBottom: "1.5px solid #e2e4ee",
+            padding: "0 24px",
+            height: 52,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
+          }}
+        >
+          <a
+            href={backToCanvasUrl}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              color: accent,
+              fontWeight: 600,
+              fontSize: 14,
+              textDecoration: "none",
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: `1.5px solid ${accent}40`,
+              background: `${accent}08`,
+              transition: "background 0.15s ease",
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M10 3L5 8l5 5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Back to canvas
+          </a>
+
+          {installedIds.size > 0 && (
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#059669",
+                background: "#d1fae5",
+                border: "1px solid #6ee7b7",
+                borderRadius: 20,
+                padding: "4px 12px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {installedIds.size}{" "}
+              {installedIds.size === 1 ? "library" : "libraries"} added
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Snackbar */}
+      {snack && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: snack.visible ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(120%)",
+            transition: "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease",
+            opacity: snack.visible ? 1 : 0,
+            zIndex: 9999,
+            background: "#1e293b",
+            color: "white",
+            borderRadius: 14,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.22)",
+            minWidth: 320,
+            maxWidth: "calc(100vw - 48px)",
+            overflow: "hidden",
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "14px 16px",
+            }}
+          >
+            {/* Check icon */}
+            <span
+              style={{
+                flexShrink: 0,
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background: "#059669",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                <path d="M2.5 6.5L5.5 9.5L10.5 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+
+            {/* Message */}
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>
+              <strong>{snack.title}</strong> was added to your library.
+            </span>
+
+            {/* Back to canvas */}
+            {canvasMode && (
+              <a
+                href={backToCanvasUrl}
+                style={{
+                  flexShrink: 0,
+                  color: "white",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  background: "rgba(255,255,255,0.15)",
+                  borderRadius: 8,
+                  padding: "5px 12px",
+                  whiteSpace: "nowrap",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                }}
+              >
+                Back to canvas
+              </a>
+            )}
+
+            {/* Dismiss */}
+            <button
+              onClick={() => setSnack((s) => s ? { ...s, visible: false } : null)}
+              style={{
+                flexShrink: 0,
+                background: "none",
+                border: "none",
+                color: "rgba(255,255,255,0.6)",
+                cursor: "pointer",
+                padding: 4,
+                lineHeight: 0,
+                borderRadius: 6,
+              }}
+              aria-label="Dismiss"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          {snack.visible && (
+            <div
+              style={{
+                height: 3,
+                background: "rgba(255,255,255,0.15)",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  background: "#6965db",
+                  animation: `snackProgress ${SNACK_DURATION}ms linear forwards`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Progress bar keyframes */}
+      <style>{`
+        @keyframes snackProgress {
+          from { width: 100%; }
+          to   { width: 0%; }
+        }
+      `}</style>
 
       {/* Content column */}
       <div
@@ -1428,7 +1833,7 @@ export const LibrariesPage: React.FC = () => {
         <header
           style={{
             textAlign: "center",
-            paddingTop: 72,
+            paddingTop: canvasMode ? 48 : 72,
             paddingBottom: 48,
           }}
         >
@@ -1602,7 +2007,9 @@ export const LibrariesPage: React.FC = () => {
               iconSize={iconSize}
               minTileWidth={minTileWidth}
               accent={accent}
+              isInstalled={installedIds.has(lib.id)}
               onAdd={handleAdd}
+              onRemove={handleRemove}
               onDownload={handleDownload}
             />
           ))}

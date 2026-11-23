@@ -1,0 +1,135 @@
+##
+## Local development stack — full Excalidraw backend
+##
+## Services:
+##   dynamodb-local   Amazon DynamoDB Local (in-memory, all tables)
+##   minio            MinIO — S3-compatible file storage
+##   setup            Creates all tables + bucket + seeds library data
+##   api              Go HTTP server  :8787  (share links, collab, files, libraries)
+##   ws               Go WebSocket    :8788  (real-time collaboration rooms)
+##
+## Quick start:
+##   # 1. Build library assets (writes manifest.json + .excalidrawlib files)
+##   pnpm seed:libraries
+##
+##   # 2. Start the stack (first run builds Go images ~1–2 min)
+##   docker compose -f docker-compose.local.yml up --build
+##
+##   # 3. Configure the Vite dev server
+##   cp .env.development.local.example .env.development.local
+##   pnpm dev
+##
+## MinIO console:  http://localhost:9001  (minioadmin / minioadmin)
+## Reset all data: docker compose -f docker-compose.local.yml down -v
+##
+
+services:
+
+  # ── DynamoDB Local ───────────────────────────────────────────────────────────
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000' 2>/dev/null && exit 0 || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+
+  # ── MinIO (S3-compatible) ─────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Admin console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  # ── Setup (create tables + bucket + seed) ─────────────────────────────────────
+  setup:
+    image: node:20-alpine
+    working_dir: /setup
+    volumes:
+      - ./docker:/setup              # setup.mjs + package.json
+      - .:/app:ro                    # read manifest.json from repo root
+    environment:
+      AWS_ENDPOINT_URL:    http://dynamodb-local:8000
+      S3_ENDPOINT:         http://minio:9000
+      AWS_ACCESS_KEY_ID:   minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION:          us-east-1
+      FILES_BUCKET:        excalidraw-files
+      # CDN_BASE: URL that the browser uses to fetch .excalidrawlib files.
+      CDN_BASE: ${CDN_BASE:-http://localhost:3001}
+      REPO_ROOT: /app
+    command: sh -c "npm install --silent && node setup.mjs"
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  # ── HTTP API ──────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: backend
+      dockerfile: Dockerfile.local
+      args:
+        CMD_NAME: api-local
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: "8787"
+      # DynamoDB — all HTTP handlers use this endpoint via ddb.Client()
+      AWS_ENDPOINT_URL:    http://dynamodb-local:8000
+      AWS_ACCESS_KEY_ID:   local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION:          us-east-1
+      # S3 / MinIO — api-local reads S3_ENDPOINT explicitly (path-style)
+      S3_ENDPOINT:         http://minio:9000
+      FILES_BUCKET:        excalidraw-files
+      # DynamoDB table names (must match what setup created)
+      SHARE_LINKS_TABLE:   ShareLinks
+      SCENES_TABLE:        Scenes
+      LIBRARIES_TABLE:     Libraries
+      USER_LIBRARIES_TABLE: UserLibraries
+      # Auth0 — set to your tenant domain to enable JWT verification
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+  # ── WebSocket (collab) ────────────────────────────────────────────────────────
+  ws:
+    build:
+      context: backend
+      dockerfile: Dockerfile.local
+      args:
+        CMD_NAME: ws-local
+    ports:
+      - "8788:8788"
+    environment:
+      PORT: "8788"
+      # Scene snapshots are persisted to DynamoDB by ws-broadcast
+      AWS_ENDPOINT_URL:  http://dynamodb-local:8000
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION:        us-east-1
+      SCENES_TABLE:      Scenes
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+volumes:
+  minio-data:

@@ -58,6 +58,14 @@ module.exports = {
   },
   overrides: [
     {
+      // @typescript-eslint/consistent-type-imports requires type information
+      // in v8+, which is unavailable for plain JS files parsed by babel.
+      files: ["**/*.js", "**/*.cjs", "**/*.mjs"],
+      rules: {
+        "@typescript-eslint/consistent-type-imports": "off",
+      },
+    },
+    {
       files: ["packages/excalidraw/**/*.{ts,tsx}"],
       excludedFiles: [
         "packages/excalidraw/**/*.test.{ts,tsx}",
