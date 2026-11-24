@@ -1,5 +1,5 @@
-import { useAuth0 } from "@auth0/auth0-react";
 import React, { useRef, useState, useEffect } from "react";
+import { useSession } from "../hooks/useSession";
 
 /**
  * Shown in the top-right of the canvas.
@@ -7,7 +7,7 @@ import React, { useRef, useState, useEffect } from "react";
  * - Authenticated → avatar circle that opens a small dropdown (name + sign out)
  */
 export const UserWidget: React.FC = () => {
-  const { isAuthenticated, isLoading, user, logout } = useAuth0();
+  const { isAuthenticated, isLoading, user, logout } = useSession();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -49,15 +49,7 @@ export const UserWidget: React.FC = () => {
         title={user.name ?? user.email}
         aria-label="Account menu"
       >
-        {user.picture ? (
-          <img
-            src={user.picture}
-            alt={user.name ?? "User avatar"}
-            style={styles.avatarImg}
-          />
-        ) : (
-          <span style={styles.avatarInitials}>{initials}</span>
-        )}
+        <span style={styles.avatarInitials}>{initials}</span>
       </button>
 
       {open && (
@@ -65,14 +57,10 @@ export const UserWidget: React.FC = () => {
           <div style={styles.dropdownHeader}>
             <span style={styles.dropdownName}>{user.name}</span>
             <span style={styles.dropdownEmail}>{user.email}</span>
+            <span style={styles.dropdownRole}>{user.role}</span>
           </div>
           <div style={styles.dropdownDivider} />
-          <button
-            style={styles.dropdownItem}
-            onClick={() =>
-              logout({ logoutParams: { returnTo: window.location.origin } })
-            }
-          >
+          <button style={styles.dropdownItem} onClick={logout}>
             Sign out
           </button>
         </div>
@@ -118,12 +106,6 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarImg: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  },
   avatarInitials: {
     fontSize: 13,
     fontWeight: 700,
@@ -156,6 +138,14 @@ const styles: Record<string, React.CSSProperties> = {
   dropdownEmail: {
     fontSize: 12,
     color: "#94a3b8",
+  },
+  dropdownRole: {
+    fontSize: 11,
+    color: "#6965db",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginTop: 2,
   },
   dropdownDivider: {
     height: 1,

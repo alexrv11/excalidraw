@@ -142,11 +142,12 @@ import DebugCanvas, {
 } from "./components/DebugCanvas";
 import { useSimulatedCollaborators } from "./debugCollaborators";
 import { AIComponents } from "./components/AI";
-import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
+import { Auth0Provider } from "@auth0/auth0-react";
 import { ExcalidrawPlusIframeExport } from "./ExcalidrawPlusIframeExport";
 import { LibrariesPage } from "./pages/Libraries";
 import { SignInPage } from "./pages/SignIn";
 import { AuthCallback } from "./pages/AuthCallback";
+import { useSession } from "./hooks/useSession";
 
 import "./index.scss";
 
@@ -468,7 +469,7 @@ const ExcalidrawWrapper = () => {
   });
 
   // Auto-load libraries the user has installed via the Libraries page.
-  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated, sessionToken } = useSession();
   useEffect(() => {
     if (!excalidrawAPI) {
       return;
@@ -535,12 +536,13 @@ const ExcalidrawWrapper = () => {
       localStorage.getItem(LOADED_KEY) ?? "[]",
     );
 
-    getAccessTokenSilently()
-      .then((token) =>
-        fetch(`${apiBase}/libraries/me`, {
-          headers: { authorization: `Bearer ${token}` },
-        }),
-      )
+    if (!sessionToken) {
+      return;
+    }
+
+    fetch(`${apiBase}/libraries/me`, {
+      headers: { authorization: `Bearer ${sessionToken}` },
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then(({ collections }: { collections: Array<{ id: string; libraryUrl: string }> }) => {
         const toLoad = collections.filter((c) => !freshLoaded.includes(c.id));
@@ -559,7 +561,7 @@ const ExcalidrawWrapper = () => {
       .catch(() => {
         // Non-fatal — library panel still shows items from IndexedDB.
       });
-  }, [excalidrawAPI, isAuthenticated, getAccessTokenSilently]);
+  }, [excalidrawAPI, isAuthenticated, sessionToken]);
 
   const [, forceRefresh] = useState(false);
 

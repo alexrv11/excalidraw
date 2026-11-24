@@ -9,6 +9,9 @@
 //   GET  /files/{key+}             — download file from S3/MinIO
 //   GET  /libraries                — list libraries
 //   ANY  /libraries/{proxy+}       — libraries CRUD
+//   POST /api/v1/auth/session      — exchange Auth0/local token for session
+//   GET  /api/v1/auth/me           — get current user
+//   POST /api/v1/auth/logout       — destroy session
 //
 // Required env vars:
 //   AWS_ENDPOINT_URL       — DynamoDB endpoint (e.g. http://dynamodb-local:8000)
@@ -16,9 +19,13 @@
 //   SCENES_TABLE           — DynamoDB table name
 //   LIBRARIES_TABLE        — DynamoDB table name
 //   USER_LIBRARIES_TABLE   — DynamoDB table name
+//   USERS_TABLE            — DynamoDB table name
+//   SESSIONS_TABLE         — DynamoDB table name
+//   INVITE_CODES_TABLE     — DynamoDB table name
 //   FILES_BUCKET           — S3 bucket name
 //   S3_ENDPOINT            — S3/MinIO endpoint (e.g. http://minio:9000)
 //   AUTH0_DOMAIN           — Auth0 domain (optional; skips JWT verification if empty)
+//   SESSION_SECRET         — HMAC key for session tokens (or LOCAL_JWT_SECRET)
 //   PORT                   — listen port (default 8787)
 package main
 
@@ -44,6 +51,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-lambda-go/events"
 
+	"github.com/excalidraw/backend/internal/authhandler"
 	"github.com/excalidraw/backend/internal/ddb"
 	"github.com/excalidraw/backend/internal/libraryhandler"
 )
@@ -367,6 +375,45 @@ func handleLibraries(w http.ResponseWriter, r *http.Request) {
 	writeProxyResponse(w, resp)
 }
 
+// ─── Auth (via authhandler) ──────────────────────────────────────────────────
+
+func handleAuth(w http.ResponseWriter, r *http.Request) {
+	// Extract proxy segment: everything after /api/v1/auth/
+	proxy := strings.TrimPrefix(r.URL.Path, "/api/v1/auth/")
+	proxy = strings.TrimSuffix(proxy, "/")
+
+	headers := make(map[string]string)
+	for k, v := range r.Header {
+		if len(v) > 0 {
+			headers[strings.ToLower(k)] = v[0]
+		}
+	}
+
+	body := ""
+	if r.Body != nil {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+	}
+
+	req := events.APIGatewayV2HTTPRequest{
+		RequestContext: events.APIGatewayV2HTTPRequestContext{
+			HTTP: events.APIGatewayV2HTTPRequestContextHTTPDescription{
+				Method: r.Method,
+			},
+		},
+		PathParameters: map[string]string{"proxy": proxy},
+		Headers:        headers,
+		Body:           body,
+	}
+
+	resp, err := authhandler.Handler(r.Context(), req)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	writeProxyResponse(w, resp)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
@@ -396,6 +443,8 @@ func main() {
 			handleFiles(w, r)
 		case p == "/libraries" || strings.HasPrefix(p, "/libraries/"):
 			handleLibraries(w, r)
+		case strings.HasPrefix(p, "/api/v1/auth/"):
+			handleAuth(w, r)
 		default:
 			writeJSON(w, 404, map[string]string{"error": "not found"})
 		}

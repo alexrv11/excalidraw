@@ -67,6 +67,24 @@ export default $config({
       primaryIndex: { hashKey: "userSub", rangeKey: "collectionId" },
     });
 
+    // ─── Auth tables ──────────────────────────────────────────────────────
+    const usersTable = new sst.aws.Dynamo("Users", {
+      fields: { sub: "string", email: "string" },
+      primaryIndex: { hashKey: "sub" },
+      globalIndexes: { byEmail: { hashKey: "email" } },
+    });
+
+    const sessionsTable = new sst.aws.Dynamo("Sessions", {
+      fields: { sid: "string" },
+      primaryIndex: { hashKey: "sid" },
+      ttl: "expiresAt",
+    });
+
+    const inviteCodesTable = new sst.aws.Dynamo("InviteCodes", {
+      fields: { code: "string" },
+      primaryIndex: { hashKey: "code" },
+    });
+
     // ─── S3 Bucket ───────────────────────────────────────────────────────────
 
     const filesBucket = new sst.aws.Bucket("Files", {
@@ -140,6 +158,18 @@ export default $config({
     };
     api.route("GET /libraries",            goFn("libraries", libEnv, [librariesTable, userLibrariesTable]));
     api.route("ANY /libraries/{proxy+}",   goFn("libraries", libEnv, [librariesTable, userLibrariesTable]));
+
+    // ─── Auth endpoints ─────────────────────────────────────────────────
+    const authEnv = {
+      USERS_TABLE:        usersTable.name,
+      SESSIONS_TABLE:     sessionsTable.name,
+      INVITE_CODES_TABLE: inviteCodesTable.name,
+      AUTH0_DOMAIN:       process.env.VITE_APP_AUTH0_DOMAIN ?? "",
+      SESSION_SECRET:     process.env.SESSION_SECRET ?? "",
+      LOCAL_JWT_SECRET:   process.env.LOCAL_JWT_SECRET ?? "",
+    };
+    api.route("GET /api/v1/auth/{proxy+}",  goFn("auth", authEnv, [usersTable, sessionsTable, inviteCodesTable]));
+    api.route("POST /api/v1/auth/{proxy+}", goFn("auth", authEnv, [usersTable, sessionsTable, inviteCodesTable]));
 
     // ─── WebSocket API ───────────────────────────────────────────────────────
 

@@ -1,15 +1,15 @@
-import { useAuth0 } from "@auth0/auth0-react";
 import { loginIcon } from "@excalidraw/excalidraw/components/icons";
 import { useI18n } from "@excalidraw/excalidraw/i18n";
 import { WelcomeScreen } from "@excalidraw/excalidraw/index";
 import React from "react";
+import { useSession } from "../hooks/useSession";
 
 export const AppWelcomeScreen: React.FC<{
   onCollabDialogOpen: () => any;
   isCollabEnabled: boolean;
 }> = React.memo((props) => {
   const { t } = useI18n();
-  const { isAuthenticated } = useAuth0();
+  const { isAuthenticated } = useSession();
 
   return (
     <WelcomeScreen>

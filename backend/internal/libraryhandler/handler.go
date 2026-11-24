@@ -2,18 +2,8 @@ package libraryhandler
 
 import (
 	"context"
-	"crypto"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"math/big"
-	"net/http"
-	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -22,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"github.com/excalidraw/backend/internal/auth"
 	"github.com/excalidraw/backend/internal/ddb"
 	"github.com/excalidraw/backend/internal/response"
 )
@@ -47,140 +38,6 @@ type Collection struct {
 	UpdatedAt   string   `json:"updatedAt" dynamodbav:"updatedAt"`
 	ItemCount   int      `json:"itemCount" dynamodbav:"itemCount"`
 	Items       []Item   `json:"items,omitempty" dynamodbav:"items"`
-}
-
-// ─── JWKS / JWT ───────────────────────────────────────────────────────────────
-
-type jwkSet struct {
-	Keys []struct {
-		Kid string `json:"kid"`
-		Kty string `json:"kty"`
-		N   string `json:"n"`
-		E   string `json:"e"`
-	} `json:"keys"`
-}
-
-var (
-	jwksMu        sync.RWMutex
-	jwksKeys      map[string]*rsa.PublicKey
-	jwksFetchedAt time.Time
-)
-
-const jwksTTL = time.Hour
-
-func getPublicKey(kid string) (*rsa.PublicKey, error) {
-	jwksMu.RLock()
-	if jwksKeys != nil && time.Since(jwksFetchedAt) < jwksTTL {
-		key := jwksKeys[kid]
-		jwksMu.RUnlock()
-		if key != nil {
-			return key, nil
-		}
-	} else {
-		jwksMu.RUnlock()
-	}
-
-	jwksMu.Lock()
-	defer jwksMu.Unlock()
-
-	domain := os.Getenv("AUTH0_DOMAIN")
-	resp, err := http.Get("https://" + domain + "/.well-known/jwks.json") //nolint:noctx
-	if err != nil {
-		return nil, fmt.Errorf("fetch jwks: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var set jwkSet
-	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
-		return nil, fmt.Errorf("decode jwks: %w", err)
-	}
-
-	m := make(map[string]*rsa.PublicKey)
-	for _, k := range set.Keys {
-		if k.Kty != "RSA" {
-			continue
-		}
-		nBytes, err := base64.RawURLEncoding.DecodeString(k.N)
-		if err != nil {
-			continue
-		}
-		eBytes, err := base64.RawURLEncoding.DecodeString(k.E)
-		if err != nil {
-			continue
-		}
-		e := 0
-		for _, b := range eBytes {
-			e = e<<8 | int(b)
-		}
-		m[k.Kid] = &rsa.PublicKey{N: new(big.Int).SetBytes(nBytes), E: e}
-	}
-	jwksKeys = m
-	jwksFetchedAt = time.Now()
-
-	if key := m[kid]; key != nil {
-		return key, nil
-	}
-	return nil, fmt.Errorf("kid %q not found in jwks", kid)
-}
-
-// verifyJWT validates an Auth0 RS256 JWT and returns the sub claim.
-func verifyJWT(tokenStr string) (string, error) {
-	parts := strings.Split(tokenStr, ".")
-	if len(parts) != 3 {
-		return "", fmt.Errorf("invalid jwt format")
-	}
-
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return "", fmt.Errorf("decode header: %w", err)
-	}
-	var header struct {
-		Alg string `json:"alg"`
-		Kid string `json:"kid"`
-	}
-	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return "", fmt.Errorf("parse header: %w", err)
-	}
-	if header.Alg != "RS256" {
-		return "", fmt.Errorf("unsupported alg: %s", header.Alg)
-	}
-
-	pubKey, err := getPublicKey(header.Kid)
-	if err != nil {
-		return "", err
-	}
-
-	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return "", fmt.Errorf("decode signature: %w", err)
-	}
-	h := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
-	if err := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, h[:], sigBytes); err != nil {
-		return "", fmt.Errorf("invalid signature")
-	}
-
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", fmt.Errorf("decode payload: %w", err)
-	}
-	var claims struct {
-		Sub string  `json:"sub"`
-		Exp float64 `json:"exp"`
-	}
-	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
-		return "", fmt.Errorf("parse claims: %w", err)
-	}
-	if time.Now().Unix() > int64(claims.Exp) {
-		return "", fmt.Errorf("token expired")
-	}
-	return claims.Sub, nil
-}
-
-// bearerToken extracts the Bearer token from the Authorization header.
-// HTTP API v2.0 normalises headers to lowercase.
-func bearerToken(req events.APIGatewayV2HTTPRequest) (string, bool) {
-	auth := req.Headers["authorization"]
-	return strings.CutPrefix(auth, "Bearer ")
 }
 
 // ─── Table names ──────────────────────────────────────────────────────────────
@@ -277,14 +134,15 @@ func handleGetOne(ctx context.Context, id string) (events.APIGatewayProxyRespons
 
 // POST /libraries/:id/install
 func handleInstall(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayProxyResponse, error) {
-	token, ok := bearerToken(req)
+	token, ok := auth.BearerToken(req)
 	if !ok {
 		return response.Error(401, "missing authorization"), nil
 	}
-	sub, err := verifyJWT(token)
+	claims, err := auth.VerifySessionToken(token)
 	if err != nil {
 		return response.Error(403, "invalid token: "+err.Error()), nil
 	}
+	sub := claims.Sub
 
 	// Verify collection exists.
 	got, err := ddb.Client().GetItem(ctx, &dynamodb.GetItemInput{
@@ -328,14 +186,15 @@ func handleInstall(ctx context.Context, req events.APIGatewayV2HTTPRequest, id s
 
 // DELETE /libraries/:id/install
 func handleUninstall(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayProxyResponse, error) {
-	token, ok := bearerToken(req)
+	token, ok := auth.BearerToken(req)
 	if !ok {
 		return response.Error(401, "missing authorization"), nil
 	}
-	sub, err := verifyJWT(token)
+	claims, err := auth.VerifySessionToken(token)
 	if err != nil {
 		return response.Error(403, "invalid token: "+err.Error()), nil
 	}
+	sub := claims.Sub
 
 	_, err = ddb.Client().DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(UserLibrariesTable),
@@ -353,14 +212,15 @@ func handleUninstall(ctx context.Context, req events.APIGatewayV2HTTPRequest, id
 
 // GET /libraries/me
 func handleGetMe(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
-	token, ok := bearerToken(req)
+	token, ok := auth.BearerToken(req)
 	if !ok {
 		return response.Error(401, "missing authorization"), nil
 	}
-	sub, err := verifyJWT(token)
+	claims, err := auth.VerifySessionToken(token)
 	if err != nil {
 		return response.Error(403, "invalid token: "+err.Error()), nil
 	}
+	sub := claims.Sub
 
 	qResult, err := ddb.Client().Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(UserLibrariesTable),

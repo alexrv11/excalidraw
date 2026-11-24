@@ -152,6 +152,39 @@ await createDdbTable({
   BillingMode: "PAY_PER_REQUEST",
 });
 
+// ── Auth tables ──────────────────────────────────────────────────────────────
+
+await createDdbTable({
+  TableName: "Users",
+  AttributeDefinitions: [
+    { AttributeName: "sub",   AttributeType: "S" },
+    { AttributeName: "email", AttributeType: "S" },
+  ],
+  KeySchema: [{ AttributeName: "sub", KeyType: "HASH" }],
+  GlobalSecondaryIndexes: [
+    {
+      IndexName: "byEmail",
+      KeySchema: [{ AttributeName: "email", KeyType: "HASH" }],
+      Projection: { ProjectionType: "ALL" },
+    },
+  ],
+  BillingMode: "PAY_PER_REQUEST",
+});
+
+await createDdbTable({
+  TableName: "Sessions",
+  AttributeDefinitions: [{ AttributeName: "sid", AttributeType: "S" }],
+  KeySchema: [{ AttributeName: "sid", KeyType: "HASH" }],
+  BillingMode: "PAY_PER_REQUEST",
+});
+
+await createDdbTable({
+  TableName: "InviteCodes",
+  AttributeDefinitions: [{ AttributeName: "code", AttributeType: "S" }],
+  KeySchema: [{ AttributeName: "code", KeyType: "HASH" }],
+  BillingMode: "PAY_PER_REQUEST",
+});
+
 // ── S3 bucket ─────────────────────────────────────────────────────────────────
 
 await ensureS3Bucket(filesBucket);

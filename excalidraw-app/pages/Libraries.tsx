@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import { useAuth0 } from "@auth0/auth0-react";
+import { useSession } from "../hooks/useSession";
 
 // ─── Adjustable settings ──────────────────────────────────────────────────────
 const DEFAULT_ICON_SIZE = 72; // px — height/width of each preview icon
@@ -1396,7 +1396,7 @@ function safeReturnUrl(referrer: string): string {
 }
 
 export const LibrariesPage: React.FC = () => {
-  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated, sessionToken } = useSession();
   const [iconSize] = useState(DEFAULT_ICON_SIZE);
   const [minTileWidth] = useState(DEFAULT_TILE_MIN_WIDTH);
   const [accent] = useState(DEFAULT_ACCENT);
@@ -1454,19 +1454,16 @@ export const LibrariesPage: React.FC = () => {
 
   // Authenticated users: load installed libraries from server preferences.
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !sessionToken) {
       return;
     }
     const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
     if (!apiBase) {
       return;
     }
-    getAccessTokenSilently()
-      .then((token) =>
-        fetch(`${apiBase}/libraries/me`, {
-          headers: { authorization: `Bearer ${token}` },
-        }),
-      )
+    fetch(`${apiBase}/libraries/me`, {
+      headers: { authorization: `Bearer ${sessionToken}` },
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data: { collections: ManifestCollection[] }) => {
         setInstalledIds(new Set(data.collections.map((c) => c.id)));
@@ -1474,7 +1471,7 @@ export const LibrariesPage: React.FC = () => {
       .catch(() => {
         // Fall back to whatever localStorage had.
       });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, sessionToken]);
 
   const filtered = allLibraries.filter((lib) => {
     if (!search) {
@@ -1540,20 +1537,16 @@ export const LibrariesPage: React.FC = () => {
       }
     }
 
-    if (isAuthenticated) {
+    if (isAuthenticated && sessionToken) {
       // Signed-in: persist to server preferences.
       const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
       if (apiBase) {
-        getAccessTokenSilently()
-          .then((token) =>
-            fetch(`${apiBase}/libraries/${id}/install`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${token}` },
-            }),
-          )
-          .catch(() => {
-            // Non-fatal.
-          });
+        fetch(`${apiBase}/libraries/${id}/install`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${sessionToken}` },
+        }).catch(() => {
+          // Non-fatal.
+        });
       }
     } else {
       // Anonymous: persist to localStorage only.
@@ -1574,20 +1567,16 @@ export const LibrariesPage: React.FC = () => {
       return next;
     });
 
-    if (isAuthenticated) {
+    if (isAuthenticated && sessionToken) {
       // Signed-in: remove from server preferences.
       const apiBase = import.meta.env.VITE_APP_AWS_API_URL;
       if (apiBase) {
-        getAccessTokenSilently()
-          .then((token) =>
-            fetch(`${apiBase}/libraries/${id}/install`, {
-              method: "DELETE",
-              headers: { authorization: `Bearer ${token}` },
-            }),
-          )
-          .catch(() => {
-            // Non-fatal.
-          });
+        fetch(`${apiBase}/libraries/${id}/install`, {
+          method: "DELETE",
+          headers: { authorization: `Bearer ${sessionToken}` },
+        }).catch(() => {
+          // Non-fatal.
+        });
       }
     } else {
       // Anonymous: remove from localStorage only.

@@ -104,8 +104,14 @@ services:
       SCENES_TABLE:        Scenes
       LIBRARIES_TABLE:     Libraries
       USER_LIBRARIES_TABLE: UserLibraries
+      USERS_TABLE:         Users
+      SESSIONS_TABLE:      Sessions
+      INVITE_CODES_TABLE:  InviteCodes
       # Auth0 — set to your tenant domain to enable JWT verification
       AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+      # Auth secrets — local dev mode
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-local-dev-secret-change-me}
+      SESSION_SECRET: ${SESSION_SECRET:-session-secret-change-me}
     depends_on:
       setup:
         condition: service_completed_successfully
